@@ -48,9 +48,10 @@ The solution spans four account tiers: the Dashboard account, the management acc
    - 7a. It reads the IAM credential report and `GetAccountAuthorizationDetails` to count active IAM users, IAM roles, and IAM Identity Center permission set roles. Permission sets that match `AdminSSOPrefixes` are counted separately and excluded from scoring.
 8. The CollectApiCallMetrics function assumes the cross-account role in each target account, through a second Map state.
    - 8a. It sums every CloudWatch `AWS/Usage` `CallCount` series over the lookback window across every enabled Region (or the `TargetRegions` list plus the home Region).
-9. The PublishMetrics function scores each account against its own metric history and publishes the per-account, alert, and collection health metrics to CloudWatch. When an account newly falls into the CRITICAL or HIGH band, it sends one combined email through Amazon SNS.
+9. The PublishMetrics function scores each account and publishes the per-account, alert, and collection health metrics to CloudWatch. The CloudWatch dashboard and alarms read these metrics. When an account newly falls into the CRITICAL or HIGH band, PublishMetrics sends one combined email through Amazon SNS.
    - 9a. It records the names of renamed accounts in Parameter Store, so their history stays linked.
-10. The dashboard's Dormant Accounts widget calls the `DormantAccountDetection-customWidget-DormantAccounts` function when the dashboard loads, and renders a table of the CRITICAL and HIGH accounts.
+   - 9b. It reads each account's metric history back from CloudWatch (`GetMetricData` over `LookbackDays`) to compute the trend half of the score.
+10. The dashboard's Dormant Accounts widget calls the seventh Lambda function, `DormantAccountDetection-customWidget-DormantAccounts`, when the dashboard loads. The function reads each account's latest `DormancyScore` from CloudWatch metrics and renders a table of the CRITICAL and HIGH accounts.
 
 The Dashboard account components:
 
