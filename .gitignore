@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+env/
+
+# OS artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE and editor artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Draw.io autosave and backup files, Microsoft Office lock files
+*.bkp
+.$*
+~$*
+
+# Security scanner output
+.ash/
+ash-scan-output-*/
+*.sarif
+
+# Internal review artifacts
+.threatmodel/

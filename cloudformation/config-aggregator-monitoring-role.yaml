@@ -1,0 +1,142 @@
+#######################################################################################################
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#######################################################################################################
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DormantAccountDetectionRole for the Config Aggregator account (the account that hosts the
+  AWS Config aggregator: the Management account, the Audit account, or any other account).
+  Grants the centralized dashboard account Lambda execution role permission to
+  query the AWS Config aggregator (by default aws-controltower-GuardrailsComplianceAggregator)
+  for resource inventory data across all organization accounts.
+
+Parameters:
+  DashboardAccountId:
+    Type: String
+    Description: AWS Account ID of the centralized dashboard account where Lambda functions run.
+    AllowedPattern: "^[0-9]{12}$"
+    ConstraintDescription: Must be a valid 12-digit AWS Account ID.
+
+  RoleName:
+    Type: String
+    Default: DormantAccountDetection-ConfigAggregatorRole
+    Description: >
+      Name of the cross-account IAM role to create in this account. Must match
+      ConfigAggregatorRoleName in the main stack.
+    AllowedPattern: "^[\\w+=,.@-]{1,64}$"
+    ConstraintDescription: Must be a valid IAM role name (1-64 characters, letters, numbers, and +=,.@_-).
+
+  ExternalId:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >
+      Optional external ID for additional trust policy security (defense in depth).
+      If provided, the dashboard account Lambda must pass this external ID when assuming the role.
+      Leave empty to skip ExternalId condition.
+      NoEcho: true prevents the value from appearing in CloudFormation console, stack events,
+      DescribeStacks API responses, and CloudTrail logs.
+
+Conditions:
+  UseExternalId: !Not [!Equals [!Ref ExternalId, ""]]
+
+Resources:
+  # ── Customer Managed Policy: Config Aggregator read access ─────────────────
+  # IAM-010: Standalone managed policy instead of inline policy.
+  # IAM-011: Customer managed policy (not AWS managed).
+  ConfigAggregatorManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >
+              Explicit ManagedPolicyName is required for operational consistency and to
+              match the naming convention used across all DormantAccountDetection resources.
+              The name is referenced in documentation and operational runbooks.
+      cdk_nag:
+        rules_to_suppress:
+          - id: "AwsSolutions-IAM5"
+            reason: >
+              config:SelectAggregateResourceConfig is scoped to aggregators in this account
+              (arn:aws:config:*:<AccountId>:config-aggregator/*). Aggregator ARNs end in a
+              generated ID, not the aggregator name, so the ID segment must be a wildcard.
+    Properties:
+      ManagedPolicyName: DormantAccountDetection-ConfigAggregatorReadPolicy
+      Description: Customer managed policy granting AWS Config aggregator query access for the DormantAccountDetection Config Aggregator account cross-account role.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowConfigAggregatorQuery
+            Effect: Allow
+            Action:
+              # CollectConfig calls only SelectAggregateResourceConfig. GetAggregateResourceConfig
+              # and ListAggregateDiscoveredResources are not granted because they return full
+              # configuration items for every resource in the organization.
+              - config:SelectAggregateResourceConfig
+            # Scope to Config Aggregators in this account only (any Region, any aggregator)
+            Resource: !Sub "arn:aws:config:*:${AWS::AccountId}:config-aggregator/*"
+
+  DormantAccountDetectionRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >
+              Explicit role name is required for cross-account trust chain integrity.
+              The dashboard account Lambda role references this role by a fixed ARN pattern
+              (arn:aws:iam::<ConfigAggregatorAccountId>:role/<ConfigAggregatorRoleName>). Allowing
+              CloudFormation to auto-generate the name would break the trust relationship
+              without a separate mechanism (e.g. AWS Systems Manager Parameter Store) to propagate the ARN.
+      cdk_nag:
+        rules_to_suppress:
+          - id: "AwsSolutions-IAM5"
+            reason: >
+              Wildcards are required per the AWS Service Authorization Reference: Config
+              SelectAggregateResourceConfig / DescribeConfigurationAggregators, CloudWatch
+              metrics read APIs, IAM GenerateCredentialReport / GetAccountAuthorizationDetails,
+              Organizations list/describe APIs, and Cost Explorer GetCostAndUsage do not
+              support resource-level permissions — Resource:* is the only valid value for
+              these actions. Where possible, actions are scoped to specific resource ARNs.
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Cross-account role assumed by the dashboard account to query Config Aggregator for organization-wide resource inventory metrics.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # Only CollectConfig Lambda assumes this role — it queries the Config Aggregator
+          # in this Config Aggregator account. No other function needs access to this account.
+          - Sid: AllowCollectConfigAssume
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DashboardAccountId}:role/DormantAccountDetection-CollectConfig-Role"
+            Action: sts:AssumeRole
+            Condition: !If
+              - UseExternalId
+              - StringEquals:
+                  sts:ExternalId: !Ref ExternalId
+              - !Ref AWS::NoValue
+      # IAM-010/IAM-011: Attach customer managed policy instead of using inline policy.
+      ManagedPolicyArns:
+        - !Ref ConfigAggregatorManagedPolicy
+      Tags:
+        - Key: Purpose
+          Value: DormantAccountDetection
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: DashboardAccount
+          Value: !Ref DashboardAccountId
+
+Outputs:
+  RoleArn:
+    Description: ARN of the DormantAccountDetectionRole created in the Config Aggregator account.
+    Value: !GetAtt DormantAccountDetectionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-RoleArn"
+
+  RoleName:
+    Description: Name of the DormantAccountDetectionRole.
+    Value: !Ref DormantAccountDetectionRole
