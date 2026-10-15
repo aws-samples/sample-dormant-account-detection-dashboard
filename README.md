@@ -89,7 +89,7 @@ Follow [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md). Clone this reposito
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, AWS services, scoring, CloudWatch resources, and cost estimate |
 | [docs/REFERENCE.md](docs/REFERENCE.md) | Parameters, deployment behavior, updates, and retained resources |
 | [SECURITY.md](SECURITY.md) | Security posture and hardening |
-| `diagrams/` | Architecture diagram (JPG, SVG, and PowerPoint) |
+| `diagrams/` | Architecture diagram source (draw.io), PowerPoint version, and the numbered JPG used in the docs |
 
 ## Related resources
 
