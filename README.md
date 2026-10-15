@@ -39,7 +39,7 @@ The solution publishes up to 11 per-account metrics to Amazon CloudWatch. It can
 - The trend half of the score detects decline, not sustained flat dormancy. An account with flat activity, even at zero, keeps full trend points, so it scores at least 50 (MEDIUM) with the default weights.
 - Trend scoring needs history. For about 44 days after a fresh deployment, no account is rated HIGH or CRITICAL with the default parameters.
 - Accounts that joined the organization within `NewAccountGracePeriodDays` (default 30 days) publish activity metrics but aren't scored.
-- Cost Explorer returns data for the previous full calendar month only.
+- The cost signal covers the previous full calendar month. `CollectCost` queries Cost Explorer for the last complete month, so `MonthlyCostUSD` changes once a month and the cost trend reacts to a spending change about a month later. Cost Explorer also offers daily and month-to-date data, but the solution uses complete months so the value stays stable.
 - Accounts or Regions that the AWS Config aggregator doesn't cover report 0 resources.
 - The service-managed StackSet doesn't deploy to the management account, so the solution doesn't monitor it.
 - Lambda code is inline (`ZipFile`), so external Python dependencies aren't supported.
