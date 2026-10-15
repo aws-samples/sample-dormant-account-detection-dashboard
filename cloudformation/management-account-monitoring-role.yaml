@@ -1,0 +1,198 @@
+#######################################################################################################
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#######################################################################################################
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DormantAccountDetectionRole for the Management (Payer) Account.
+  Grants the centralized dashboard account Lambda execution role permission to:
+  - Query AWS Cost Explorer for monthly cost data per linked account
+  - Query AWS Organizations to resolve OU membership and account details
+
+Parameters:
+  DashboardAccountId:
+    Type: String
+    Description: AWS Account ID of the centralized dashboard account where Lambda functions run.
+    AllowedPattern: "^[0-9]{12}$"
+    ConstraintDescription: Must be a valid 12-digit AWS Account ID.
+
+  RoleName:
+    Type: String
+    Default: DormantAccountDetectionRole
+    Description: Name of the cross-account IAM role to create in this account.
+    AllowedPattern: "^[\\w+=,.@-]{1,64}$"
+    ConstraintDescription: Must be a valid IAM role name (1-64 characters, letters, numbers, and +=,.@_-).
+
+  ExternalId:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >
+      Optional external ID for additional trust policy security (defense in depth).
+      If provided, the dashboard account Lambda must pass this external ID when assuming the role.
+      Leave empty to skip ExternalId condition.
+      NoEcho: true prevents the value from appearing in CloudFormation console, stack events,
+      DescribeStacks API responses, and CloudTrail logs.
+
+Conditions:
+  UseExternalId: !Not [!Equals [!Ref ExternalId, ""]]
+
+Resources:
+  # ── Customer Managed Policy: Cost Explorer read access ────────────────────
+  # IAM-010: Standalone managed policy instead of inline policy.
+  # IAM-011: Customer managed policy (not AWS managed).
+  CostExplorerManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W13
+            reason: >
+              Cost Explorer (ce:GetCostAndUsage) has no resource types defined in the AWS
+              Service Authorization Reference — only account-level access is possible.
+              Resource: "*" is the only valid value (W13 is the correct cfn-nag rule for
+              AWS::IAM::ManagedPolicy; W11 applies only to inline policies on AWS::IAM::Role).
+          - id: W28
+            reason: >
+              Explicit ManagedPolicyName is required for operational consistency and to
+              match the naming convention used across all DormantAccountDetection resources.
+      cdk_nag:
+        rules_to_suppress:
+          - id: "AwsSolutions-IAM5"
+            reason: >
+              Cost Explorer GetCostAndUsage does not support resource-level permissions
+              per the AWS Service Authorization Reference — Resource:* is required.
+    Properties:
+      ManagedPolicyName: DormantAccountDetection-CostExplorerReadPolicy
+      Description: Customer managed policy granting Cost Explorer read access for the DormantAccountDetection Management account cross-account role.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCostExplorerRead
+            Effect: Allow
+            Action:
+              - ce:GetCostAndUsage
+            # Cost Explorer read APIs have no resource types defined in the AWS Service
+            # Authorization Reference — only account-level access is supported.
+            # Resource: "*" is the only valid value for these actions.
+            Resource: "*"
+
+  # ── Customer Managed Policy: Organizations read access ────────────────────
+  # IAM-010: Standalone managed policy instead of inline policy.
+  # IAM-011: Customer managed policy (not AWS managed).
+  OrganizationsManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >
+              Explicit ManagedPolicyName is required for operational consistency and to
+              match the naming convention used across all DormantAccountDetection resources.
+      cdk_nag:
+        rules_to_suppress:
+          - id: "AwsSolutions-IAM5"
+            reason: >
+              The policy grants only the three Organizations actions GetAccounts calls
+              (ListAccountsForParent, ListChildren, DescribeAccount), scoped to OU, root, and
+              account ARNs in this management account. The organization ID segment is a
+              wildcard (o-*) because the organization ID isn't a template input.
+    Properties:
+      ManagedPolicyName: DormantAccountDetection-OrganizationsReadPolicy
+      Description: Customer managed policy granting Organizations read access for the DormantAccountDetection Management account cross-account role.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowOrganizationsReadScopedToOUs
+            Effect: Allow
+            Action:
+              # These actions support resource-level permissions per the AWS Service
+              # Authorization Reference (resource types: organizationalunit, account, root).
+              - organizations:ListAccountsForParent
+              - organizations:ListChildren
+            Resource:
+              - !Sub "arn:aws:organizations::${AWS::AccountId}:ou/o-*/*"
+              - !Sub "arn:aws:organizations::${AWS::AccountId}:root/o-*/*"
+          - Sid: AllowOrganizationsReadScopedToAccounts
+            Effect: Allow
+            Action:
+              # DescribeAccount supports resource-level permissions scoped to account ARNs.
+              - organizations:DescribeAccount
+            Resource: !Sub "arn:aws:organizations::${AWS::AccountId}:account/o-*/*"
+
+  DormantAccountDetectionRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >
+              Explicit role name is required for cross-account trust chain integrity.
+              The dashboard account Lambda role references this role by a fixed ARN pattern
+              (arn:aws:iam::<ManagementAccountId>:role/<CrossAccountRoleName>). Allowing
+              CloudFormation to auto-generate the name would break the trust relationship
+              without a separate mechanism (e.g. AWS Systems Manager Parameter Store) to propagate the ARN.
+      cdk_nag:
+        rules_to_suppress:
+          - id: "AwsSolutions-IAM5"
+            reason: >
+              Wildcards are required per the AWS Service Authorization Reference: Config
+              SelectAggregateResourceConfig / DescribeConfigurationAggregators, CloudWatch
+              metrics read APIs, IAM GenerateCredentialReport / GetAccountAuthorizationDetails,
+              and Cost Explorer GetCostAndUsage do not
+              support resource-level permissions — Resource:* is the only valid value for
+              these actions. Where possible, actions are scoped to specific resource ARNs.
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Cross-account role assumed by the dashboard account to query Cost Explorer and Organizations API for cost data and account hierarchy resolution.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # GetAccounts Lambda assumes this role to call AWS Organizations API
+          # (resolve OU membership and account hierarchy).
+          - Sid: AllowGetAccountsAssume
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DashboardAccountId}:role/DormantAccountDetection-GetAccounts-Role"
+            Action: sts:AssumeRole
+            Condition: !If
+              - UseExternalId
+              - StringEquals:
+                  sts:ExternalId: !Ref ExternalId
+              - !Ref AWS::NoValue
+          # CollectCost Lambda assumes this role to call Cost Explorer API
+          # (monthly cost per linked account).
+          - Sid: AllowCollectCostAssume
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DashboardAccountId}:role/DormantAccountDetection-CollectCost-Role"
+            Action: sts:AssumeRole
+            Condition: !If
+              - UseExternalId
+              - StringEquals:
+                  sts:ExternalId: !Ref ExternalId
+              - !Ref AWS::NoValue
+      # IAM-010/IAM-011: Attach customer managed policies instead of using inline policies.
+      ManagedPolicyArns:
+        - !Ref CostExplorerManagedPolicy
+        - !Ref OrganizationsManagedPolicy
+      Tags:
+        - Key: Purpose
+          Value: DormantAccountDetection
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: DashboardAccount
+          Value: !Ref DashboardAccountId
+
+Outputs:
+  RoleArn:
+    Description: ARN of the DormantAccountDetectionRole created in the Management account.
+    Value: !GetAtt DormantAccountDetectionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-RoleArn"
+
+  RoleName:
+    Description: Name of the DormantAccountDetectionRole.
+    Value: !Ref DormantAccountDetectionRole

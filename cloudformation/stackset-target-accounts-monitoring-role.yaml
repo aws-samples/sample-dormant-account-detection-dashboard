@@ -1,0 +1,212 @@
+#######################################################################################################
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#######################################################################################################
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DormantAccountDetectionRole for Target Member Accounts.
+  This template is intended for deployment via CloudFormation StackSets (SERVICE_MANAGED mode)
+  from the Management account to all target member accounts (or specific OUs).
+  Grants the centralized dashboard account Lambda execution role permission to:
+  - Query CloudWatch AWS/Usage metrics for API call volume (replaces CloudTrail LookupEvents)
+  - Generate and retrieve IAM credential reports (active IAM user metric)
+  - Get IAM account authorization details with role last-used timestamps (active IAM role metric)
+
+Parameters:
+  DashboardAccountId:
+    Type: String
+    Description: AWS Account ID of the centralized dashboard account where Lambda functions run.
+    AllowedPattern: "^[0-9]{12}$"
+    ConstraintDescription: Must be a valid 12-digit AWS Account ID.
+
+  RoleName:
+    Type: String
+    Default: DormantAccountDetectionRole
+    Description: Name of the cross-account IAM role to create in member accounts.
+    AllowedPattern: "^[\\w+=,.@-]{1,64}$"
+    ConstraintDescription: Must be a valid IAM role name (1-64 characters, letters, numbers, and +=,.@_-).
+
+  ExternalId:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >
+      Optional external ID for additional trust policy security (defense in depth).
+      If provided, the dashboard account Lambda must pass this external ID when assuming the role.
+      Leave empty to skip ExternalId condition.
+      NoEcho: true prevents the value from appearing in CloudFormation console, stack events,
+      DescribeStacks API responses, and CloudTrail logs.
+
+Conditions:
+  UseExternalId: !Not [!Equals [!Ref ExternalId, ""]]
+
+Resources:
+  # ── Customer Managed Policy: CloudWatch Usage metrics read access ──────────
+  # IAM-010: Standalone managed policy instead of inline policy.
+  # IAM-011: Customer managed policy (not AWS managed).
+  CloudWatchUsageManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W13
+            reason: >
+              CloudWatch Metrics read APIs (GetMetricData, GetMetricStatistics, ListMetrics)
+              have no resource types defined in the AWS Service Authorization Reference —
+              they operate at account level only. Resource: "*" is the only valid value
+              (W13 is the correct cfn-nag rule for AWS::IAM::ManagedPolicy; W11 applies
+              only to inline policies on AWS::IAM::Role).
+          - id: W28
+            reason: >
+              Explicit ManagedPolicyName is required for operational consistency and to
+              match the naming convention used across all DormantAccountDetection resources.
+      cdk_nag:
+        rules_to_suppress:
+          - id: "AwsSolutions-IAM5"
+            reason: >
+              CloudWatch GetMetricData, GetMetricStatistics, and ListMetrics do not support
+              resource-level permissions per the AWS Service Authorization Reference —
+              Resource:* is the only valid value for these actions.
+    Properties:
+      ManagedPolicyName: DormantAccountDetection-CloudWatchUsageReadPolicy
+      Description: Customer managed policy granting CloudWatch Usage metrics read access for the DormantAccountDetection member account cross-account role.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudWatchMetricData
+            Effect: Allow
+            Action:
+              - cloudwatch:GetMetricData
+              - cloudwatch:GetMetricStatistics
+              - cloudwatch:ListMetrics
+            # CloudWatch Metrics read APIs (GetMetricData, GetMetricStatistics, ListMetrics)
+            # have no resource types defined in the AWS Service Authorization Reference.
+            # These actions operate at the account level — Resource: "*" is required.
+            Resource: "*"
+
+  # ── Customer Managed Policy: IAM read access ──────────────────────────────
+  # IAM-010: Standalone managed policy instead of inline policy.
+  # IAM-011: Customer managed policy (not AWS managed).
+  IAMReadManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W13
+            reason: >
+              IAM account-level operations (GenerateCredentialReport, GetCredentialReport,
+              GetAccountAuthorizationDetails) are account-scoped and have no resource ARN —
+              Resource: "*" is the only valid value per the AWS Service Authorization Reference
+              (W13 is the correct cfn-nag rule for AWS::IAM::ManagedPolicy; W11 applies
+              only to inline policies on AWS::IAM::Role).
+          - id: W28
+            reason: >
+              Explicit ManagedPolicyName is required for operational consistency and to
+              match the naming convention used across all DormantAccountDetection resources.
+      cdk_nag:
+        rules_to_suppress:
+          - id: "AwsSolutions-IAM5"
+            reason: >
+              IAM GenerateCredentialReport, GetCredentialReport, and
+              GetAccountAuthorizationDetails do not support resource-level permissions
+              per the AWS Service Authorization Reference — Resource:* is required.
+    Properties:
+      ManagedPolicyName: DormantAccountDetection-IAMReadPolicy
+      Description: Customer managed policy granting IAM read access for the DormantAccountDetection member account cross-account role (credential report and role last-used data).
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowIAMAccountLevelOps
+            Effect: Allow
+            Action:
+              # These actions are account-scoped and do not support resource-level
+              # permissions per the AWS Service Authorization Reference.
+              # GenerateCredentialReport and GetCredentialReport generate/retrieve
+              # a single account-wide CSV report. GetAccountAuthorizationDetails
+              # returns all IAM entities in the account. Resource: "*" is required.
+              - iam:GenerateCredentialReport
+              - iam:GetCredentialReport
+              - iam:GetAccountAuthorizationDetails
+            Resource: "*"
+
+  DormantAccountDetectionRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >
+              Explicit role name is required for cross-account trust chain integrity.
+              The dashboard account Lambda role references this role by a fixed ARN pattern
+              (arn:aws:iam::<MemberAccountId>:role/<CrossAccountRoleName>) constructed at
+              runtime from the CrossAccountRoleName parameter. Allowing CloudFormation to
+              auto-generate the name would break the trust relationship without a separate
+              mechanism (e.g. AWS Systems Manager Parameter Store) to propagate the ARN.
+      cdk_nag:
+        rules_to_suppress:
+          - id: "AwsSolutions-IAM5"
+            reason: >
+              Wildcards are required per the AWS Service Authorization Reference: Config
+              SelectAggregateResourceConfig / DescribeConfigurationAggregators, CloudWatch
+              metrics read APIs, IAM GenerateCredentialReport / GetAccountAuthorizationDetails,
+              Organizations list/describe APIs, and Cost Explorer GetCostAndUsage do not
+              support resource-level permissions — Resource:* is the only valid value for
+              these actions. Where possible, actions are scoped to specific resource ARNs.
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Cross-account role assumed by the dashboard account to collect CloudWatch API call counts and IAM activity metrics for account dormancy assessment.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # CollectApiCallMetrics Lambda assumes this role to call CloudWatch GetMetricData
+          # on the AWS/Usage namespace to count API calls in this member account.
+          - Sid: AllowCollectApiCallMetricsAssume
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DashboardAccountId}:role/DormantAccountDetection-CollectApiCallMetrics-Role"
+            Action: sts:AssumeRole
+            Condition: !If
+              - UseExternalId
+              - StringEquals:
+                  sts:ExternalId: !Ref ExternalId
+              - !Ref AWS::NoValue
+          # CollectIAM Lambda assumes this role to call IAM APIs (credential report,
+          # GetAccountAuthorizationDetails) to count active IAM users, roles, and SSO sessions.
+          - Sid: AllowCollectIAMAssume
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DashboardAccountId}:role/DormantAccountDetection-CollectIAM-Role"
+            Action: sts:AssumeRole
+            Condition: !If
+              - UseExternalId
+              - StringEquals:
+                  sts:ExternalId: !Ref ExternalId
+              - !Ref AWS::NoValue
+      # IAM-010/IAM-011: Attach customer managed policies instead of using inline policies.
+      ManagedPolicyArns:
+        - !Ref CloudWatchUsageManagedPolicy
+        - !Ref IAMReadManagedPolicy
+      Tags:
+        - Key: Purpose
+          Value: DormantAccountDetection
+        - Key: ManagedBy
+          Value: CloudFormationStackSet
+        - Key: DashboardAccount
+          Value: !Ref DashboardAccountId
+
+Outputs:
+  RoleArn:
+    Description: ARN of the DormantAccountDetectionRole created in this member account.
+    Value: !GetAtt DormantAccountDetectionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-RoleArn"
+
+  RoleName:
+    Description: Name of the DormantAccountDetectionRole.
+    Value: !Ref DormantAccountDetectionRole
+
+  AccountId:
+    Description: This account's ID (useful for StackSet output tracking).
+    Value: !Ref AWS::AccountId
