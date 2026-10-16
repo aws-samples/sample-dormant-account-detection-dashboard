@@ -117,9 +117,9 @@ Each role template names its role with its `RoleName` parameter (default `Dorman
 
 ## Automation and scale
 
-The StackSet that deploys the target account role uses `SERVICE_MANAGED` mode with automatic deployment. When a new account joins a monitored OU, StackSets deploys the role to it. The next daily run picks up the account through the GetAccounts OU traversal, and the new-account grace period (`NewAccountGracePeriodDays`, default 30) keeps it out of scoring and notifications until it has a usable history.
+The StackSet that deploys the target account role uses `SERVICE_MANAGED` mode with automatic deployment. When a new account joins a monitored OU, StackSets deploys the role to it. The next daily run picks up the account through the GetAccounts OU traversal, and the new-account grace period (`NewAccountGracePeriodDays`, default 30) keeps it out of scoring and notifications until that many days have passed since it joined the organization.
 
-The Map states process accounts in parallel up to `MapConcurrency` (default 10). An account that fails is recorded as `CollectionFailed=1` without stopping the other accounts (see [Step Functions state machine](#step-functions-state-machine) for retries and the timeout). For large organizations, see the concurrency practice in [Best practices](../README.md#best-practices).
+The Map states process accounts in parallel up to `MapConcurrency` (default 10). The pipeline records a failed account as `CollectionFailed=1` without stopping the other accounts (see [Step Functions state machine](#step-functions-state-machine) for retries and the timeout). For large organizations, see the concurrency practice in [Best practices](../README.md#best-practices).
 
 ## AWS services
 
