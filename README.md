@@ -1,8 +1,8 @@
 # Dormant Account Detection Dashboard
 
-Large AWS Organizations accumulate dormant accounts over time. Projects end, experiments get abandoned, and teams move on, but the accounts remain. Each dormant account incurs cost, expands the security attack surface, complicates compliance audits, and inflates the account inventory. Finding these accounts by hand across tens or hundreds of accounts isn't practical, so platform, security, and FinOps teams need an automated, repeatable assessment.
+Large AWS Organizations accumulate dormant accounts over time. Projects end, experiments get abandoned, and teams move on, but the accounts remain. Each dormant account incurs cost, increases security exposure, complicates compliance audits, and inflates the account inventory. Finding these accounts by hand across tens or hundreds of accounts isn't practical, so platform, security, and FinOps teams need an automated, repeatable assessment.
 
-This pattern deploys a serverless solution that runs a daily assessment of every account in an organization in AWS Organizations, or a subset filtered by OU IDs and account IDs. AWS Control Tower is supported but not required. The solution collects 7 activity signals per account over a configurable lookback window (90 days by default) and computes a Dormancy Score from 0 (fully dormant) to 100 (fully active) with a hybrid self-baselining model. The model combines absolute human-presence signals (IAM Identity Center and IAM user activity) with self-relative activity trends (API calls, IAM roles, cost, and resource creation), so each account is judged against its own history instead of fixed cross-account thresholds. Scores fall into five rating bands, from CRITICAL to ACTIVE, and newly onboarded accounts get a configurable grace period.
+This pattern deploys a serverless solution that runs a daily assessment of every account in an organization in AWS Organizations, or a subset filtered by organizational unit (OU) IDs and account IDs. AWS Control Tower is supported but not required. The solution collects 7 activity signals per account over a configurable lookback window (90 days by default) and computes a Dormancy Score from 0 (fully dormant) to 100 (fully active) with a hybrid self-baselining model. The model combines absolute human-presence signals (IAM Identity Center and IAM user activity) with self-relative activity trends (API calls, IAM roles, cost, and resource creation), so each account is judged against its own history instead of fixed cross-account thresholds. Scores fall into five rating bands, from CRITICAL to ACTIVE, and newly onboarded accounts get a configurable grace period.
 
 The solution publishes up to 11 per-account metrics to Amazon CloudWatch. It can send Amazon Simple Notification Service (Amazon SNS) email notifications when accounts newly fall into the CRITICAL or HIGH bands, when data collection fails, and when no collection run completes. Six AWS Lambda functions, orchestrated by an AWS Step Functions state machine and triggered daily by Amazon EventBridge, collect data from AWS Organizations, AWS Cost Explorer, AWS Config, AWS Identity and Access Management (IAM), and CloudWatch. A seventh function backs a dashboard widget that lists the current CRITICAL and HIGH accounts. A pre-built CloudWatch dashboard (22 to 26 widgets) shows account activity, dormancy scores and ratings, collection health, and cost trends, with an account-name filter. The solution deploys entirely through AWS CloudFormation, with all Lambda code inline, so it needs no build pipeline.
 
@@ -22,6 +22,7 @@ The solution publishes up to 11 per-account metrics to Amazon CloudWatch. It can
 
 ### Prerequisites
 
+- An active AWS account.
 - An organization in AWS Organizations, with or without AWS Control Tower.
 - AWS Command Line Interface (AWS CLI) version 2.
 - Permission to deploy CloudFormation stacks that create IAM roles in three accounts (see [Deployment permissions](docs/REFERENCE.md#deployment-permissions)):
@@ -54,14 +55,14 @@ The solution publishes up to 11 per-account metrics to Amazon CloudWatch. It can
 
 Decide these four things before you deploy. Changing the Dashboard account or Region later means a full teardown.
 
-- **Use a dedicated Dashboard account.** Put it in a security OU, not a workload or shared-services account. It holds every target account's IAM and IAM Identity Center activity, API call volume, resource inventory, and cost, so anyone who controls it can survey the whole organization. Limit human access to a small group with MFA.
+- **Use a dedicated Dashboard account.** Put it in a security OU, not a workload or shared-services account. It holds every target account's IAM and AWS IAM Identity Center activity, API call volume, resource inventory, and cost, so anyone who controls it can survey the whole organization. Limit human access to a small group that uses multi-factor authentication (MFA).
 - **Use an aggregator that covers every target account.** It must be in the Region where you deploy and cover every Region and global resources. With AWS Control Tower, enroll every target account. For other aggregators, see [AWS Config aggregator](docs/REFERENCE.md#aws-config-aggregator).
 - **Deploy in one Region.** The IAM role names are fixed, so a second copy in another Region of the same account fails.
 - **Keep the stack names.** Updates and teardown reuse the guide's `DormantAccountDetection-*` stack names, and CloudFormation can't rename a stack.
 
 Then follow these practices:
 
-- **Restrict changes to the solution.** Use SCPs or permissions boundaries so only a dedicated deployment role can update the stacks and Lambda functions, and turn on stack termination protection.
+- **Restrict changes to the solution.** Use service control policies (SCPs) or permissions boundaries so only a dedicated deployment role can update the stacks and Lambda functions, and turn on stack termination protection.
 - **Set `OrganizationId` and `ExternalId`.** `OrganizationId` limits the per-account roles to accounts in your organization. `ExternalId` adds an `sts:ExternalId` condition to every cross-account trust policy. The deployment guide sets both.
 - **Keep the default customer managed keys.** `LogGroupKmsKeyType` and `SnsKmsKeyType` default to `CMK`, with automatic rotation.
 - **Keep identity details out of the logs.** Leave `LogIamPrincipalNames` at `false`. Turn it on only while you troubleshoot a count.
@@ -78,6 +79,8 @@ For more hardening, see [Production Hardening Recommendations](SECURITY.md#produ
 Follow [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md). Clone this repository and run the commands from its root directory.
 
 ## Code repository
+
+The code for this pattern is available in the GitHub [sample-dormant-account-detection-dashboard](https://github.com/aws-samples/sample-dormant-account-detection-dashboard) repository.
 
 | Path | Contents |
 |---|---|
@@ -103,7 +106,6 @@ Follow [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md). Clone this reposito
 - [Organizing your AWS environment using multiple accounts](https://docs.aws.amazon.com/whitepapers/latest/organizing-your-aws-environment/organizing-your-aws-environment.html)
 - [Access to AWS accounts owned by third parties (external ID)](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_common-scenarios_third-party.html)
 - [Amazon CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)
-- [APG pattern: Detect dormant AWS accounts across an AWS Organization by using a centralized CloudWatch dashboard](https://apg-library.amazonaws.com/content-viewer/author/95f46e56-bf1a-4217-bbcf-49bef911b9c2)
 
 ## Security
 
