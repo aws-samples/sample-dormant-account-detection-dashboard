@@ -20,7 +20,7 @@ This document describes how the solution works. Its sections follow the AWS Pres
 - AWS Lambda (7 Python 3.14 functions with inline code: 6 collection and publishing functions, and 1 custom dashboard widget function)
 - Amazon CloudWatch (custom metrics, a dashboard with 22 to 26 widgets, up to 5 alarms, and 8 encrypted log groups)
 - Amazon Simple Notification Service (Amazon SNS) (2 encrypted topics with email subscriptions, optional)
-- AWS Key Management Service (AWS KMS) (customer managed keys for CloudWatch Logs, Step Functions execution history, and SNS encryption)
+- AWS Key Management Service (AWS KMS) (customer managed keys for Amazon CloudWatch Logs, Step Functions execution history, and SNS encryption)
 - AWS Identity and Access Management (IAM) (9 execution and service roles in the main stack, 3 cross-account roles, and 14 customer managed policies across 4 templates)
 - AWS CloudFormation (4 templates) and AWS CloudFormation StackSets (`SERVICE_MANAGED` mode with automatic deployment)
 - AWS Organizations (OU traversal for account discovery)
@@ -227,10 +227,10 @@ Each account receives a score from 0 (fully dormant) to 100 (fully active). The 
 
 | Default Weight | Signal | Source |
 |---|---|---|
-| 35 | `ActiveSSOUserCount > 0` (non-admin human SSO login) | IAM `AWSReservedSSO_*` role usage |
+| 35 | `ActiveSSOUserCount > 0` (non-admin human sign-in through AWS IAM Identity Center) | IAM `AWSReservedSSO_*` role usage |
 | 15 | `ActiveIAMUserCount > 0` (IAM user credential activity) | IAM Credential Report |
 
-These award their full weight if any such activity occurred in the lookback window, nothing otherwise. `ActiveSSOUserCount` counts the IAM Identity Center permission set roles (`AWSReservedSSO_*`) in the account whose `RoleLastUsed` date falls in the lookback window. It counts roles, not distinct people: several users of one permission set count once, and one user with two permission sets counts twice. SSO roles whose names start with any prefix in `AdminSSOPrefixes` are excluded from `ActiveSSOUserCount` and counted separately in `ActiveAdminSSOUserCount` (dashboard-only), so routine admin logins don't mask an otherwise dormant account.
+These award their full weight if any such activity occurred in the lookback window, nothing otherwise. `ActiveSSOUserCount` counts the IAM Identity Center permission set roles (`AWSReservedSSO_*`) in the account whose `RoleLastUsed` date falls in the lookback window. It counts roles, not distinct people: several users of one permission set count once, and one user with two permission sets counts twice. Single sign-on (SSO) roles whose names start with any prefix in `AdminSSOPrefixes` are excluded from `ActiveSSOUserCount` and counted separately in `ActiveAdminSSOUserCount` (dashboard-only), so routine admin logins don't mask an otherwise dormant account.
 
 #### Half 2: Self-relative activity-trend signals (each account is its own baseline)
 
@@ -249,7 +249,7 @@ Points awarded = `weight × trend ratio`, where **trend ratio = mean(last N days
 - An account needs at least `2 × N` daily datapoints before a trend is computed; below that the ratio is 1.0 (full points), so a fresh deployment or newly onboarded account isn't flagged because of missing history.
 - An account with a zero leading-window mean also receives 1.0 (no baseline to decline from).
 - If the history request fails for an account, all four of its trend ratios are set to 1.0 for that run, and the `dormancy_score` log entry carries `signalHistoryFetchFailed=true`.
-- A collection failure never lowers a score. Collectors retry throttled calls (adaptive retry mode, 10 attempts); a signal that still can't be collected is reported in `failedSignals`. `PublishMetrics` then publishes `CollectionFailed=1` for the account (for every account when the Cost Explorer or AWS Config query fails), doesn't publish that raw signal, so no false zero enters the history, and:
+- A collection failure does not lower a score. Collectors retry throttled calls (adaptive retry mode, 10 attempts); a signal that still can't be collected is reported in `failedSignals`. `PublishMetrics` then publishes `CollectionFailed=1` for the account (for every account when the Cost Explorer or AWS Config query fails), doesn't publish that raw signal, so no false zero enters the history, and:
   - skips scoring for the account this run when IAM Identity Center or IAM user sign-ins are missing (log event `dormancy_scoring_skipped_incomplete`), or
   - scores a missing trend signal at the neutral 1.0 (listed in `neutralTrendSignals` in the `dormancy_score` log entry).
   The `AccountsFailed` alarm reports the failure. An account whose collection keeps failing isn't rated until a run succeeds.

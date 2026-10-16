@@ -4,8 +4,7 @@
 
 This project is sample/pattern code intended to demonstrate a serverless dormant account detection solution on AWS. It is **not production-ready** without additional security hardening, operational review, and adaptation to your organization's specific requirements and compliance posture.
 
-This pattern is published in the AWS Prescriptive Guidance (APG) Library:
-[Dormant Account Detection Dashboard — APG Library](https://apg-library.amazonaws.com/content-viewer/author/95f46e56-bf1a-4217-bbcf-49bef911b9c2)
+This pattern accompanies the AWS Prescriptive Guidance (APG) pattern *Automate dormant account detection across an AWS Organization*.
 
 Before deploying this solution in a production environment, review the [Production Hardening Recommendations](#production-hardening-recommendations) section below and engage your security team.
 
@@ -62,7 +61,7 @@ Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for step-by-step d
 
 ## Known Security Considerations
 
-A full STRIDE threat model is maintained in [.threatmodel/threat-model.md](.threatmodel/threat-model.md) (human-readable) and [.threatmodel/threat-model.tc.json](.threatmodel/threat-model.tc.json) (AWS Threat Composer import). It covers 17 threats and 27 mitigations across 7 trust zones, with code-validated evidence and a residual-risk decision for every threat. The table below summarizes the findings most relevant to operators; the threat model is the authoritative source.
+The maintainers keep a full STRIDE threat model for this pattern. It covers 17 threats and 27 mitigations across 7 trust zones, with code-validated evidence and a residual-risk decision for every threat. The following table summarizes the findings that matter most to operators.
 
 The findings below fall into two groups: **accepted design decisions** appropriate for this sample pattern, and **open items** (flagged ⚠️) that apply to a default deployment and that an operator should remediate before production use.
 
@@ -167,4 +166,4 @@ This solution has minimal external dependencies:
 | **Python standard library** | 3.14 | `json`, `csv`, `io`, `os`, `time`, `datetime` — no external packages or Lambda layers required. |
 | **AWS CloudFormation** | — | Used to deploy all resources. No CDK, Terraform, or other IaC tooling is required. |
 | **Amazon S3** | — | Used only to stage the main CloudFormation template at deploy time, because the template exceeds the 51,200-byte direct-upload limit (the console creates a staging bucket automatically; the AWS CLI needs `--s3-bucket`). Lambda code is inline in the template, so no Lambda deployment package is stored. |
-| **External build pipeline** | — | Not required — the solution deploys directly from the CloudFormation template with no build or packaging step. |
+| **External build pipeline** | — | Not required. The solution deploys directly from the CloudFormation template with no build or packaging step. |

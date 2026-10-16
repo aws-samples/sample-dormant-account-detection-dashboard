@@ -99,7 +99,7 @@ Expect no output. Print the external ID with `echo "$EXTERNAL_ID"` and save it i
 
 ### Task 1.8: Set the template staging bucket
 
-CloudFormation stages the main template in an Amazon S3 bucket in the Dashboard account and Region. These commands create the bucket if it doesn't exist. To use an existing bucket, set its name instead.
+AWS CloudFormation stages the main template in an Amazon S3 bucket in the Dashboard account and Region. These commands create the bucket if it doesn't exist. To use an existing bucket, set its name instead.
 
 ```bash
 export TEMPLATE_BUCKET="dormant-account-detection-cfn-${DASHBOARD_ACCOUNT_ID}-${REGION}"
@@ -120,7 +120,7 @@ Expect `ENABLED`. If it prints `DISABLED`, run `aws cloudformation activate-orga
 
 ### Task 1.10: Check the Lambda concurrency quota
 
-The 7 functions each reserve 10 concurrent executions (`LambdaReservedConcurrency`), and Lambda keeps 100 unreserved.
+The seven functions each reserve 10 concurrent executions (`LambdaReservedConcurrency`), and AWS Lambda keeps 100 unreserved.
 
 ```bash
 aws lambda get-account-settings \
@@ -326,7 +326,7 @@ aws cloudwatch describe-alarms \
   --output text --region "$REGION" --profile "$DASH_PROFILE"
 ```
 
-Expect OK for every alarm except `CollectionHeartbeat`. It can show INSUFFICIENT_DATA or ALARM until CloudWatch evaluates the hour that contains the run (up to about 2 hours), then OK.
+Expect OK for every alarm except `CollectionHeartbeat`. It can show INSUFFICIENT_DATA or ALARM until Amazon CloudWatch evaluates the hour that contains the run (up to about 2 hours), then OK.
 
 ### Task 5.4: Open the dashboard
 
@@ -508,7 +508,7 @@ To deploy again, run Epics 2-5 in order and confirm both email subscriptions aga
 |---|---|
 | A stack fails to create | Find the cause with `aws cloudformation describe-stack-events --stack-name <stack-name> --query "StackEvents[?contains(ResourceStatus,'FAILED')].[LogicalResourceId,ResourceStatusReason]" --output text --region "$REGION" --profile <profile>`. Delete the failed stack and wait for `DELETE_COMPLETE`. For the main stack, also run [task 6.4](#task-64-delete-the-retained-resources). Then retry. |
 | Task 2.1 fails with `already exists` on a log group | An earlier deployment left its log groups. Run the log group commands in [task 6.4](#task-64-delete-the-retained-resources), then task 2.1 again. |
-| Task 5.1 prints `PARTIAL_FAILURE` or `FAILURE` | Search the `/aws/lambda/DormantAccountDetection-PublishMetrics` log group for `per_account_collection_failed` (lists the failed accounts and signals) and `lambda_level_errors`. `FAILURE` means every account failed, usually because the AWS Config or Cost Explorer query failed. If the `-CollectConfig` log shows `total_resource_count_failed`, redo [task 1.4](#task-14-find-the-aws-config-aggregator) and rerun task 2.1. If the `-CollectCost` log shows an error, activate Cost Explorer in the management account. |
+| Task 5.1 prints `PARTIAL_FAILURE` or `FAILURE` | Search the `/aws/lambda/DormantAccountDetection-PublishMetrics` log group for `per_account_collection_failed` (lists the failed accounts and signals) and `lambda_level_errors`. `FAILURE` means every account failed, usually because the AWS Config or AWS Cost Explorer query failed. If the `-CollectConfig` log shows `total_resource_count_failed`, redo [task 1.4](#task-14-find-the-aws-config-aggregator) and rerun task 2.1. If the `-CollectCost` log shows an error, activate Cost Explorer in the management account. |
 | Task 5.1 prints `FAILED` | Find the failing state with `aws stepfunctions get-execution-history --execution-arn "$EXEC_ARN" --reverse-order --max-results 20 --region "$REGION" --profile "$DASH_PROFILE"`, then read that function's `/aws/lambda/DormantAccountDetection-<Function>` log group. `AccessDenied` on `sts:AssumeRole` means the role stack in that account has a different `ExternalId` or role name: rerun task 3.1 or 3.2 with the values from Epic 1. |
 | `AccessDenied` on `sts:AssumeRole` after you recreate only the main stack | The role stacks still trust the deleted execution roles. Run Epic 6, then Epics 2-5. For other options, see [Stale trust after recreating the main stack](REFERENCE.md#stale-trust-after-recreating-the-main-stack). |
 | A stack instance in task 3.3 isn't `CURRENT` | Read its `StatusReason` in the `list-stack-instances` output, fix the cause, and run `create-stack-instances` again. Accounts listed only in `TargetAccountIds` also need an instance. |
