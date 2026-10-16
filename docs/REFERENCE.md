@@ -136,7 +136,7 @@ Each role template exports its role ARN as `<StackName>-RoleArn`. StackSet insta
 
 ## Update the deployment
 
-In a new shell, rerun [Epic 1](DEPLOYMENT_GUIDE.md#epic-1-prepare-the-environment) with your saved external ID. Then rerun the [main stack deployment](DEPLOYMENT_GUIDE.md#task-21-deploy-the-main-stack) with your changed parameters.
+In a new shell, rerun [Epic 1](DEPLOYMENT_GUIDE.md#epic-1-prepare-the-environment) with your saved external ID. Then rerun the [main stack deployment](DEPLOYMENT_GUIDE.md#task-21-run-the-stack-deployment-with-the-aws-cli) with your changed parameters.
 
 To review the change set first, add `--no-execute-changeset` and run the `describe-change-set` command it prints. To apply it, run `aws cloudformation execute-change-set --change-set-name <change-set-arn> --region "$REGION" --profile "$DASH_PROFILE"`.
 

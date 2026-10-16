@@ -99,7 +99,7 @@ Expect no output. Print the external ID with `echo "$EXTERNAL_ID"` and save it i
 
 ### Task 1.8: Set the template staging bucket
 
-AWS CloudFormation stages the main template in an Amazon S3 bucket in the Dashboard account and Region. These commands create the bucket if it doesn't exist. To use an existing bucket, set its name instead.
+AWS CloudFormation stages the main template in an Amazon S3 bucket in the Dashboard account and Region. These commands create the bucket if it does not exist. To use an existing bucket, set its name instead.
 
 ```bash
 export TEMPLATE_BUCKET="dormant-account-detection-cfn-${DASHBOARD_ACCOUNT_ID}-${REGION}"
@@ -136,7 +136,7 @@ Expect a second number of at least 170. If it's lower, request a higher quota wi
 
 Skills required: AWS administrator
 
-### Task 2.1: Deploy the main stack
+### Task 2.1: Run the stack deployment with the AWS CLI
 
 ```bash
 aws cloudformation deploy \
@@ -157,7 +157,7 @@ aws cloudformation deploy \
 
 Expect `Successfully created/updated stack - DormantAccountDetection-Dashboard` after about 5 minutes. If it prints `Failed to create/update the stack`, see the first two rows of [Troubleshooting](#troubleshooting). The defaults for the other parameters suit a first deployment. To change them, see [Parameter reference](REFERENCE.md#parameter-reference).
 
-The daily schedule (2:00 AM UTC) starts now. Finish Epic 3 before then, so the first scheduled run succeeds.
+The daily schedule (2:00 AM UTC) is now active. Finish Epic 3 before then, so the first scheduled run succeeds.
 
 ---
 
@@ -305,7 +305,7 @@ The wait prints nothing. Expect one line: `SUCCEEDED`, JSON that contains `"stat
 
 Expect no dormancy email from this run, and no HIGH or CRITICAL rating for about 44 days (see [Limitations](../README.md#limitations)).
 
-### Task 5.2: Check the aggregator coverage
+### Task 5.2: Confirm aggregator coverage after the first run
 
 
 ```bash
@@ -366,7 +366,7 @@ Add this statement, with that ARN as `Resource`, to the IAM policy or IAM Identi
 
 Skills required: AWS administrator
 
-Run the tasks in order, one at a time, in the shell from Epic 1. In a new shell, run tasks 1.2, 1.3, and 1.8 first. If you turned on termination protection, turn it off for each stack with `aws cloudformation update-termination-protection --no-enable-termination-protection --stack-name <stack-name> --region "$REGION" --profile <profile>`. If a `wait` command exits with an error, or task 6.1 doesn't print SUCCEEDED, stop. Find the cause in the stack events (see [Troubleshooting](#troubleshooting)) and repeat that task.
+Run the tasks in order, one at a time, in the shell from Epic 1. In a new shell, run tasks 1.2, 1.3, and 1.8 first. If you enabled termination protection, disable it for each stack with `aws cloudformation update-termination-protection --no-enable-termination-protection --stack-name <stack-name> --region "$REGION" --profile <profile>`. If a `wait` command exits with an error, or task 6.1 doesn't print SUCCEEDED, stop. Find the cause in the stack events (see [Troubleshooting](#troubleshooting)) and repeat that task.
 
 ### Task 6.1: Delete the target account role StackSet
 
